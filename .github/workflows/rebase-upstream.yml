@@ -1,0 +1,60 @@
+name: Rebase Upstream
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebase-upstream
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Rebase Upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          UPSTREAM: "Vencord/Vesktop"
+          UPSTREAM_BRANCH: master
+        shell: bash
+        run: |
+          set -ex
+
+          if [ -z "$UPSTREAM" ]; then
+            export GH_TOKEN="$GITHUB_TOKEN"
+            UPSTREAM=$(gh api repos/:owner/:repo --jq .parent.full_name)
+            [ -n "$UPSTREAM" ] || { echo "Can't find upstream" >&2; exit 1; }
+          fi
+
+          echo "$UPSTREAM" | egrep '^(http|git@)' >/dev/null || UPSTREAM="https://github.com/$UPSTREAM.git"
+
+          git remote add upstream "$UPSTREAM"
+          git fetch upstream "$UPSTREAM_BRANCH"
+
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "GitHub Actions"
+
+          BRANCH="$(git branch --show-current)"
+
+          # Don't track upstream automatically when github workflow changes are present
+          if ! git diff --quiet HEAD "upstream/$UPSTREAM_BRANCH" -- .github/workflows; then
+            echo "::warning::Upstream changed .github/workflows | not automatically syncing, review manually"
+            exit 1
+          fi
+
+          git rebase "upstream/$UPSTREAM_BRANCH"
+
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH")" ]; then
+            ORIGIN_URL=$(git remote get-url origin)
+            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
+            git push origin "$BRANCH" --force-with-lease
+          fi
