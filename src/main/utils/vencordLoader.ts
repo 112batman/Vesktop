@@ -45,9 +45,10 @@ export async function githubGet(endpoint: string) {
 }
 
 export async function downloadVencordFiles() {
-    const release = await githubGet("/repos/Vendicated/Vencord/releases/latest");
+    const release = await githubGet("/repos/112batman/Vencord/releases");
+    const allReleases: ReleaseData[] = await release.json();
 
-    const { assets }: ReleaseData = await release.json();
+    const { assets } = allReleases.find(rel => rel.tag_name === "releasebuild")!;
 
     await Promise.all(
         assets
