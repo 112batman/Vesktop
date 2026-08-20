@@ -45,16 +45,24 @@ jobs:
 
           BRANCH="$(git branch --show-current)"
 
-          # Don't track upstream automatically when github workflow changes are present
-          if ! git diff --quiet HEAD "upstream/$UPSTREAM_BRANCH" -- .github/workflows; then
-            echo "::warning::Upstream changed .github/workflows | not automatically syncing, review manually"
-            exit 1
-          fi
-
+          # Preserve local workflows and exclude them from the upstream rebase.
+          WORKFLOW_BACKUP="$(mktemp -d)"
+          cp -a .github/workflows/. "$WORKFLOW_BACKUP/"
+          
+          rm -rf .github/workflows
+          
           git rebase "upstream/$UPSTREAM_BRANCH"
-
+          
+          # Restore local workflows, completely ignoring upstream workflow changes.
+          mkdir -p .github/workflows
+          cp -a "$WORKFLOW_BACKUP/." .github/workflows/
+          
+          rm -rf "$WORKFLOW_BACKUP"
+          
+          git add .github/workflows
+          
           if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH")" ]; then
             ORIGIN_URL=$(git remote get-url origin)
-            git remote set-url origin "${ORIGIN_URL/https:\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
+            git remote set-url origin "${ORIGIN_URL/https:\/\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
             git push origin "$BRANCH" --force-with-lease
           fi
