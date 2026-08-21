@@ -35,7 +35,8 @@ jobs:
             [ -n "$UPSTREAM" ] || { echo "Can't find upstream" >&2; exit 1; }
           fi
 
-          echo "$UPSTREAM" | egrep '^(http|git@)' >/dev/null || UPSTREAM="https://github.com/$UPSTREAM.git"
+          echo "$UPSTREAM" | egrep '^(http|git@)' >/dev/null || \
+            UPSTREAM="https://github.com/$UPSTREAM.git"
 
           git remote add upstream "$UPSTREAM"
           git fetch upstream "$UPSTREAM_BRANCH"
@@ -45,24 +46,42 @@ jobs:
 
           BRANCH="$(git branch --show-current)"
 
-          # Preserve local workflows and exclude them from the upstream rebase.
+          # Remember exactly what the fork currently has in .github/workflows.
+          #
+          # We save the files outside the repository rather than modifying the
+          # working tree before the rebase.
           WORKFLOW_BACKUP="$(mktemp -d)"
-          cp -a .github/workflows/. "$WORKFLOW_BACKUP/"
-          
-          rm -rf .github/workflows
-          
+          if [ -d .github/workflows ]; then
+            cp -a .github/workflows/. "$WORKFLOW_BACKUP/"
+          fi
+
+          # Rebase everything normally.
           git rebase "upstream/$UPSTREAM_BRANCH"
-          
-          # Restore local workflows, completely ignoring upstream workflow changes.
+
+          # Remove whatever the upstream rebase produced for workflows.
+          rm -rf .github/workflows
           mkdir -p .github/workflows
-          cp -a "$WORKFLOW_BACKUP/." .github/workflows/
-          
+
+          # Restore the fork's exact workflow contents.
+          if [ -d "$WORKFLOW_BACKUP" ]; then
+            cp -a "$WORKFLOW_BACKUP/." .github/workflows/
+          fi
+
           rm -rf "$WORKFLOW_BACKUP"
-          
-          git add .github/workflows
-          
+
+          # Stage the restored workflows.
+          git add -A .github/workflows
+
+          # The workflows need to be part of the resulting branch state.
+          if ! git diff --cached --quiet; then
+            git commit -m "Preserve fork workflows"
+          fi
+
+          # Push only when the resulting branch differs from origin.
           if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH")" ]; then
             ORIGIN_URL=$(git remote get-url origin)
-            git remote set-url origin "${ORIGIN_URL/https:\/\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
+            git remote set-url origin \
+              "${ORIGIN_URL/https:\/\/\//https:\/\/x-access-token:$GITHUB_TOKEN@}"
+
             git push origin "$BRANCH" --force-with-lease
           fi
