@@ -86,8 +86,7 @@ await Promise.all([
         ...NodeCommonOpts,
         entryPoints: ["src/main/arrpc/worker.ts"],
         outfile: "dist/js/arRpcWorker.js",
-        footer: { js: "//# sourceURL=VesktopArRpcWorker" },
-        sourcemap: false
+        footer: { js: "//# sourceURL=VesktopArRpcWorker" }
     }),
     createContext({
         ...NodeCommonOpts,
